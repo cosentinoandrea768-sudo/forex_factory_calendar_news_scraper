@@ -1,7 +1,5 @@
-pandas
-selenium==4.13.0
-webdriver_manager==4.0.2
-datetime
-pytz
-requests
 flask
+requests
+pandas
+beautifulsoup4
+python-dotenv
