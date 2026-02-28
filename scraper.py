@@ -2,6 +2,8 @@ import time
 import argparse
 import json
 import pandas as pd
+import os
+import requests
 from datetime import datetime
 from config import ALLOWED_ELEMENT_TYPES, ICON_COLOR_MAP
 from utils import save_csv
@@ -10,12 +12,37 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+
+def send_telegram_message(message: str):
+    bot_token = os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("CHAT_ID")
+
+    if not bot_token or not chat_id:
+        print("[WARNING] BOT_TOKEN or CHAT_ID not set.")
+        return
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message
+    }
+
+    try:
+        requests.post(url, json=payload, timeout=10)
+        print("[INFO] Startup message sent to Telegram.")
+    except Exception as e:
+        print(f"[ERROR] Failed to send Telegram message: {e}")
 
 
 def init_driver(headless=True) -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     if headless:
-        options.add_argument("--headless")
+        options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -58,8 +85,7 @@ def parse_table(driver, month, year):
                     f"{class_name}", "cell")
 
                 if "calendar__impact" in class_name:
-                    impact_elements = element.find_elements(
-                        By.TAG_NAME, "span")
+                    impact_elements = element.find_elements(By.TAG_NAME, "span")
                     color = None
                     for impact in impact_elements:
                         impact_class = impact.get_attribute("class")
@@ -79,24 +105,19 @@ def parse_table(driver, month, year):
             data.append(row_data)
 
     save_csv(data, month, year)
-
     return data, month
 
 
-def get_target_month(arg_month=None):
-    now = datetime.now()
-    month = arg_month if arg_month else now.strftime("%B")
-    year = now.strftime("%Y")
-    return month, year
+def main_scraper():
+    send_telegram_message("🚀 Bot Forex Factory avviato correttamente su Render.")
 
-
-def main():
     parser = argparse.ArgumentParser(
         description="Scrape Forex Factory calendar.")
     parser.add_argument("--months", nargs="+",
                         help='Target months: e.g., this next')
 
-    args = parser.parse_args()
+    # 🔒 Fix per Render (evita crash da argomenti interni)
+    args = parser.parse_args(args=[])
     month_params = args.months if args.months else ["this"]
 
     for param in month_params:
@@ -106,12 +127,12 @@ def main():
 
         driver = init_driver()
         driver.get(url)
-        detected_tz = driver.execute_script("return Intl.DateTimeFormat().resolvedOptions().timeZone")
+        detected_tz = driver.execute_script(
+            "return Intl.DateTimeFormat().resolvedOptions().timeZone")
         print(f"[INFO] Browser timezone: {detected_tz}")
         config.SCRAPER_TIMEZONE = detected_tz
         scroll_to_end(driver)
 
-        # Determine readable month name and year
         if param == "this":
             now = datetime.now()
             month = now.strftime("%B")
@@ -131,9 +152,19 @@ def main():
         except Exception as e:
             print(f"[ERROR] Failed to scrape {param} ({month} {year}): {e}")
 
-        driver.quit()  #  Kill the driver cleanly after each scrape
+        driver.quit()
         time.sleep(3)
 
 
+@app.route("/")
+def index():
+    return "Bot Forex Factory è attivo! 🚀"
+
+
 if __name__ == "__main__":
-    main()
+    scraper_thread = threading.Thread(target=main_scraper)
+    scraper_thread.start()
+
+    # ✅ Porta dinamica per Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
