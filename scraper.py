@@ -42,19 +42,14 @@ def send_telegram_message(message: str):
 def init_driver(headless=True) -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     if headless:
-        options.add_argument("--headless=new")
+        options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("window-size=1920x1080")
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    )
 
-    print("Attempting to initialize WebDriver with ChromeDriverManager...")
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
-    print("WebDriver initialized successfully using ChromeDriverManager.")
     return driver
 
 
@@ -116,20 +111,17 @@ def main_scraper():
     parser.add_argument("--months", nargs="+",
                         help='Target months: e.g., this next')
 
-    # 🔒 Fix per Render (evita crash da argomenti interni)
     args = parser.parse_args(args=[])
     month_params = args.months if args.months else ["this"]
 
     for param in month_params:
         param = param.lower()
         url = f"https://www.forexfactory.com/calendar?month={param}"
-        print(f"\n[INFO] Navigating to {url}")
 
         driver = init_driver()
         driver.get(url)
         detected_tz = driver.execute_script(
             "return Intl.DateTimeFormat().resolvedOptions().timeZone")
-        print(f"[INFO] Browser timezone: {detected_tz}")
         config.SCRAPER_TIMEZONE = detected_tz
         scroll_to_end(driver)
 
@@ -146,7 +138,6 @@ def main_scraper():
             month = param.capitalize()
             year = datetime.now().year
 
-        print(f"[INFO] Scraping data for {month} {year}")
         try:
             parse_table(driver, month, str(year))
         except Exception as e:
@@ -161,10 +152,13 @@ def index():
     return "Bot Forex Factory è attivo! 🚀"
 
 
-if __name__ == "__main__":
-    scraper_thread = threading.Thread(target=main_scraper)
-    scraper_thread.start()
+@app.route("/run")
+def run_scraper():
+    thread = threading.Thread(target=main_scraper)
+    thread.start()
+    return "Scraper avviato! 🚀"
 
-    # ✅ Porta dinamica per Render
+
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
